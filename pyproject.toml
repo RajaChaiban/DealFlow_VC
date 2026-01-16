@@ -1,0 +1,130 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dealflow-ai-copilot"
+version = "0.1.0"
+description = "AI-powered private equity deal analysis platform with multi-agent orchestration"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.11"
+authors = [
+    {name = "DealFlow Team"}
+]
+keywords = [
+    "private-equity",
+    "deal-analysis",
+    "ai",
+    "fastapi",
+    "google-gemini",
+    "multi-agent"
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Web Environment",
+    "Framework :: FastAPI",
+    "Intended Audience :: Financial and Insurance Industry",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Office/Business :: Financial :: Investment",
+    "Typing :: Typed",
+]
+
+dependencies = [
+    "fastapi>=0.109.0",
+    "uvicorn[standard]>=0.27.0",
+    "pydantic>=2.5.3",
+    "pydantic-settings>=2.1.0",
+    "google-generativeai>=0.3.2",
+    "PyPDF2>=3.0.1",
+    "pdf2image>=1.17.0",
+    "Pillow>=10.2.0",
+    "python-docx>=1.1.0",
+    "pandas>=2.2.0",
+    "python-dateutil>=2.8.2",
+    "httpx>=0.26.0",
+    "aiofiles>=23.2.1",
+    "python-dotenv>=1.0.0",
+    "loguru>=0.7.2",
+    "python-multipart>=0.0.6",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4.4",
+    "pytest-asyncio>=0.23.3",
+    "black>=24.1.0",
+    "isort>=5.13.0",
+    "mypy>=1.8.0",
+    "ruff>=0.1.14",
+]
+
+[project.urls]
+Homepage = "https://github.com/your-org/dealflow-ai-copilot"
+Documentation = "https://github.com/your-org/dealflow-ai-copilot#readme"
+Repository = "https://github.com/your-org/dealflow-ai-copilot.git"
+Issues = "https://github.com/your-org/dealflow-ai-copilot/issues"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["app*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+python_files = ["test_*.py", "*_test.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "-v --tb=short"
+
+[tool.black]
+line-length = 100
+target-version = ["py311"]
+include = '\.pyi?$'
+exclude = '''
+/(
+    \.eggs
+  | \.git
+  | \.hg
+  | \.mypy_cache
+  | \.tox
+  | \.venv
+  | _build
+  | buck-out
+  | build
+  | dist
+)/
+'''
+
+[tool.isort]
+profile = "black"
+line_length = 100
+skip_gitignore = true
+
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+ignore_missing_imports = true
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "B",   # flake8-bugbear
+    "C4",  # flake8-comprehensions
+    "UP",  # pyupgrade
+]
+ignore = [
+    "E501",  # line too long (handled by black)
+    "B008",  # do not perform function calls in argument defaults
+]

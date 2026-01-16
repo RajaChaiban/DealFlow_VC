@@ -1,0 +1,52 @@
+version: "3.8"
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: production
+    container_name: dealflow-api
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - DEBUG=${DEBUG:-False}
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+      - PITCHBOOK_API_KEY=${PITCHBOOK_API_KEY:-}
+      - CRUNCHBASE_API_KEY=${CRUNCHBASE_API_KEY:-}
+      - SERP_API_KEY=${SERP_API_KEY:-}
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+      - ./prompts:/app/prompts
+    env_file:
+      - .env
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    networks:
+      - dealflow-network
+
+networks:
+  dealflow-network:
+    driver: bridge
+
+# Uncomment below for additional services (Redis, PostgreSQL, etc.)
+#
+# redis:
+#   image: redis:7-alpine
+#   container_name: dealflow-redis
+#   restart: unless-stopped
+#   ports:
+#     - "6379:6379"
+#   volumes:
+#     - redis-data:/data
+#   networks:
+#     - dealflow-network
+#
+# volumes:
+#   redis-data:
