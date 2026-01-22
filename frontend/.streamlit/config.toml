@@ -1,0 +1,49 @@
+# Streamlit Configuration for DealFlow AI Copilot
+# https://docs.streamlit.io/library/advanced-features/configuration
+
+[global]
+# Development mode settings
+developmentMode = false
+
+[server]
+# Server settings
+port = 8501
+headless = true
+enableCORS = false
+enableXsrfProtection = true
+maxUploadSize = 200
+
+# File watcher settings
+fileWatcherType = "auto"
+runOnSave = true
+
+[browser]
+# Browser settings
+gatherUsageStats = false
+serverAddress = "localhost"
+serverPort = 8501
+
+[theme]
+# Custom theme matching our design system
+# Deep navy primary with gold accents
+primaryColor = "#d4a853"
+backgroundColor = "#0a1628"
+secondaryBackgroundColor = "#1a2744"
+textColor = "#f8fafc"
+font = "sans serif"
+
+[client]
+# Client-side caching
+caching = true
+displayEnabled = true
+showErrorDetails = true
+
+[runner]
+# Script runner settings
+magicEnabled = true
+fastReruns = true
+
+[deprecation]
+# Deprecation warnings
+showfileUploaderEncoding = false
+showPyplotGlobalUse = false

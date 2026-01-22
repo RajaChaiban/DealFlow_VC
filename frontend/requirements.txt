@@ -1,0 +1,29 @@
+# DealFlow AI Copilot - Frontend Dependencies
+# Production-grade Streamlit application requirements
+
+# Core framework
+streamlit>=1.29.0,<2.0.0
+
+# HTTP client for API communication
+requests>=2.31.0,<3.0.0
+
+# Data handling
+pandas>=2.0.0,<3.0.0
+
+# JSON processing (included with Python, but explicit for clarity)
+# json (standard library)
+
+# Type hints support
+typing-extensions>=4.8.0
+
+# Date/time utilities
+python-dateutil>=2.8.2
+
+# Environment variable management (optional, for local development)
+python-dotenv>=1.0.0
+
+# Watchdog for file watching (improves Streamlit hot reload)
+watchdog>=3.0.0
+
+# Additional utilities
+tenacity>=8.2.0  # Retry logic
