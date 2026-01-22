@@ -175,3 +175,6 @@ data/outputs/*
 *.key
 credentials.json
 secrets.json
+
+# Claude Code
+.claude/
