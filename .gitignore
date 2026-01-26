@@ -178,3 +178,10 @@ secrets.json
 
 # Claude Code
 .claude/
+
+# Windows reserved names
+nul
+NUL
+
+# Test files
+test_documents/
