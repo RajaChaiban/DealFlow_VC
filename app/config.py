@@ -41,6 +41,50 @@ class Settings(BaseSettings):
     )
     max_tokens: int = Field(default=2048, ge=1, description="Maximum tokens for AI responses")
 
+    # Database Settings
+    database_url: str = Field(
+        default="postgresql+asyncpg://dealflow:dealflow@localhost:5432/dealflow",
+        description="PostgreSQL connection URL",
+    )
+    database_echo: bool = Field(default=False, description="Echo SQL statements")
+
+    # Redis Settings
+    redis_url: str = Field(
+        default="redis://localhost:6379/0",
+        description="Redis connection URL",
+    )
+    redis_ttl_seconds: int = Field(default=3600, description="Default cache TTL in seconds")
+
+    # JWT Authentication
+    jwt_secret_key: str = Field(
+        default="dealflow-secret-key-change-in-production",
+        description="Secret key for JWT encoding",
+    )
+    jwt_algorithm: str = Field(default="HS256", description="JWT algorithm")
+    jwt_access_token_expire_minutes: int = Field(
+        default=60, description="Access token expiration in minutes"
+    )
+
+    # API Key Authentication
+    api_keys: str = Field(
+        default="",
+        description="Comma-separated list of valid API keys",
+    )
+
+    # Rate Limiting
+    rate_limit_per_minute: int = Field(
+        default=30, description="Rate limit: requests per minute"
+    )
+    rate_limit_per_hour: int = Field(
+        default=200, description="Rate limit: requests per hour"
+    )
+
+    # CORS
+    cors_origins: str = Field(
+        default="http://localhost:3000,http://localhost:8501",
+        description="Comma-separated allowed CORS origins",
+    )
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
@@ -62,6 +106,20 @@ class Settings(BaseSettings):
     def output_path(self) -> Path:
         """Get output directory as Path object."""
         return Path(self.output_dir)
+
+    @property
+    def cors_origin_list(self) -> list[str]:
+        """Get CORS origins as a list."""
+        if not self.cors_origins:
+            return ["*"]
+        return [origin.strip() for origin in self.cors_origins.split(",")]
+
+    @property
+    def api_key_list(self) -> list[str]:
+        """Get API keys as a list."""
+        if not self.api_keys:
+            return []
+        return [key.strip() for key in self.api_keys.split(",") if key.strip()]
 
     def get_data_directories(self) -> list[Path]:
         """Get all data directories that should be created on startup."""

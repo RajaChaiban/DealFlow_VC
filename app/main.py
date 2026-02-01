@@ -22,8 +22,21 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app import __version__
-from app.api import deals_router, health_router
+from app.api import (
+    analytics_router,
+    auth_router,
+    chat_router,
+    comparison_router,
+    confidence_router,
+    deals_router,
+    export_router,
+    health_router,
+    pipeline_router,
+    simple_deals_router,
+)
 from app.config import settings
+from app.middleware.auth import AuthMiddleware
+from app.middleware.rate_limit import setup_rate_limiting
 from app.utils import logger
 from app.utils.exceptions import (
     AnalysisError,
@@ -39,7 +52,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """
     Application lifespan manager.
 
-    Handles startup and shutdown events.
+    Handles startup and shutdown events including database and cache initialization.
     """
     # Startup
     logger.info("Starting DealFlow AI Copilot...")
@@ -51,12 +64,43 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         directory.mkdir(parents=True, exist_ok=True)
         logger.debug(f"Ensured directory exists: {directory}")
 
+    # Initialize Redis cache (non-blocking, falls back gracefully)
+    try:
+        from app.services.redis_cache import get_redis_cache
+        cache = get_redis_cache()
+        await cache.connect()
+    except Exception as e:
+        logger.warning(f"Redis not available (caching disabled): {e}")
+
+    # Initialize database (optional, only if PostgreSQL is available)
+    try:
+        from app.database.session import init_db
+        await init_db()
+        logger.info("Database initialized")
+    except Exception as e:
+        logger.warning(f"Database not available (using in-memory storage): {e}")
+
     logger.info("DealFlow AI Copilot started successfully")
 
     yield
 
     # Shutdown
     logger.info("Shutting down DealFlow AI Copilot...")
+
+    # Close Redis
+    try:
+        from app.services.redis_cache import get_redis_cache
+        cache = get_redis_cache()
+        await cache.disconnect()
+    except Exception:
+        pass
+
+    # Close database
+    try:
+        from app.database.session import close_db
+        await close_db()
+    except Exception:
+        pass
 
 
 # Create FastAPI application
@@ -67,36 +111,35 @@ app = FastAPI(
 
 AI-powered private equity deal analysis platform with multi-agent orchestration using Google Gemini.
 
-### What It Does
-Upload a pitch deck PDF and receive a complete Investment Committee memo in 30-60 seconds, including:
-- **Data Extraction**: Financial metrics, team info, market data from unstructured documents
-- **Business Analysis**: Model viability, market opportunity, competitive positioning
-- **Risk Assessment**: Systematic red flag identification with severity scoring
-- **Valuation**: Revenue multiples, comparables, DCF with scenario analysis
-- **IC Memo**: Professional investment memorandum ready for review
+### Features
+- **Deal Analysis**: Upload pitch decks for automated IC memo generation
+- **Deal Comparison**: Compare 2-3 deals side-by-side
+- **Deal Pipeline**: Kanban-style deal tracking and management
+- **Chat Analysis**: Conversational follow-up questions about deals
+- **Export**: Download memos as PDF, DOCX, or JSON
+- **Confidence Heatmap**: See extraction confidence per data point
 
 ### Multi-Agent Architecture
 ```
 Orchestrator ─┬─> Extraction Agent (PDF → Structured Data)
-              │
               ├─> Analysis Agent (Business/Market/Competitive)
-              │
               ├─> Risk Agent (Financial/Team/Market Risks)
-              │
               └─> Valuation Agent (Multiple Methodologies)
 ```
 
-### API Workflow
-1. `POST /api/v1/deals/upload` - Upload pitch deck PDF
-2. `POST /api/v1/deals/analyze` - Start background analysis
-3. `GET /api/v1/deals/{id}/status` - Check progress
-4. `GET /api/v1/deals/{id}/result` - Get complete IC memo
-
-Or use `POST /api/v1/deals/analyze/sync` for synchronous analysis (blocks until complete).
+### Authentication
+- **JWT Bearer Tokens**: For user sessions (`Authorization: Bearer <token>`)
+- **API Keys**: For programmatic access (`X-API-Key: <key>`)
 
 ### API Sections
+- **Auth**: User registration, login, API key management
 - **Health**: System health and readiness checks
-- **Deals**: Deal document upload, analysis, and results
+- **Deals**: Deal analysis (upload, analyze, results)
+- **Compare**: Side-by-side deal comparison
+- **Pipeline**: Kanban deal tracking
+- **Chat**: Conversational deal analysis
+- **Export**: PDF/DOCX/JSON export
+- **Confidence**: Data confidence heatmap
     """,
     version=__version__,
     docs_url="/docs",
@@ -108,11 +151,17 @@ Or use `POST /api/v1/deals/analyze/sync` for synchronous analysis (blocks until 
 # CORS Middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Configure appropriately for production
+    allow_origins=settings.cors_origin_list,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Auth Middleware (logging only, doesn't block)
+app.add_middleware(AuthMiddleware)
+
+# Rate Limiting
+setup_rate_limiting(app)
 
 
 # Exception handler for custom exceptions
@@ -130,7 +179,15 @@ async def dealflow_exception_handler(
 
 # Include routers
 app.include_router(health_router)
+app.include_router(auth_router, prefix="/api/v1")
 app.include_router(deals_router, prefix="/api/v1")
+app.include_router(simple_deals_router, prefix="/api/v1")
+app.include_router(comparison_router, prefix="/api/v1")
+app.include_router(export_router, prefix="/api/v1")
+app.include_router(pipeline_router, prefix="/api/v1")
+app.include_router(chat_router, prefix="/api/v1")
+app.include_router(confidence_router, prefix="/api/v1")
+app.include_router(analytics_router, prefix="/api/v1")
 
 
 @app.get(
@@ -150,6 +207,16 @@ async def root() -> dict[str, Any]:
         "name": settings.app_name,
         "version": __version__,
         "description": "AI-powered private equity deal analysis platform",
+        "features": [
+            "Multi-agent deal analysis",
+            "Deal comparison",
+            "Pipeline management",
+            "Conversational analysis",
+            "PDF/DOCX export",
+            "Confidence heatmap",
+            "JWT & API key authentication",
+            "Rate limiting",
+        ],
         "documentation": {
             "swagger": "/docs",
             "redoc": "/redoc",

@@ -224,11 +224,12 @@ async def analyze_sync(
 
         logger.info(f"Synchronous analysis complete: {analysis_id}")
 
+        result_dict = result.model_dump() if hasattr(result, "model_dump") else result
         return AnalysisResponse(
             analysis_id=analysis_id,
             status=AgentStatus.COMPLETED,
             message="Analysis complete",
-            result=result,
+            result=result_dict,
         )
 
     except AnalysisError as e:
@@ -267,11 +268,13 @@ async def get_analysis_status(analysis_id: str) -> AnalysisResponse:
     if analysis_id not in _analysis_jobs:
         # Check results
         if analysis_id in _analysis_results:
+            r = _analysis_results[analysis_id]
+            r_dict = r.model_dump() if hasattr(r, "model_dump") else r
             return AnalysisResponse(
                 analysis_id=analysis_id,
                 status=AgentStatus.COMPLETED,
                 message="Analysis complete",
-                result=_analysis_results[analysis_id],
+                result=r_dict,
             )
 
         raise HTTPException(
@@ -292,7 +295,12 @@ async def get_analysis_status(analysis_id: str) -> AnalysisResponse:
         message=_get_status_message(job["status"]),
         progress=progress,
         error=job.get("error"),
-        result=_analysis_results.get(analysis_id),
+        result=(
+            _analysis_results[analysis_id].model_dump()
+            if analysis_id in _analysis_results
+            and hasattr(_analysis_results[analysis_id], "model_dump")
+            else _analysis_results.get(analysis_id)
+        ),
     )
 
 
@@ -379,25 +387,36 @@ async def delete_analysis(analysis_id: str) -> dict[str, str]:
 @router.get(
     "",
     summary="List Analyses",
-    description="List all analysis jobs",
+    description="List all analysis jobs with optional search and filtering.",
 )
 async def list_analyses(
     status: Optional[str] = None,
+    company_name: Optional[str] = None,
+    recommendation: Optional[str] = None,
+    min_score: Optional[float] = None,
+    sort_by: str = "created_at",
     limit: int = 50,
+    offset: int = 0,
 ) -> dict[str, Any]:
     """
     List all analysis jobs.
 
     Args:
         status: Filter by status (pending, running, completed, failed)
+        company_name: Search by company name (case-insensitive substring)
+        recommendation: Filter by recommendation (e.g. "Buy", "Pass")
+        min_score: Minimum attractiveness score
+        sort_by: Sort field (created_at, company_name, score)
         limit: Maximum number of results
+        offset: Pagination offset
 
     Returns:
         List of analysis jobs
     """
     jobs: list[dict[str, Any]] = []
 
-    for analysis_id, job in list(_analysis_jobs.items())[:limit]:
+    # In-memory job queue entries
+    for analysis_id, job in list(_analysis_jobs.items()):
         if status and job["status"].value != status:
             continue
 
@@ -406,23 +425,63 @@ async def list_analyses(
             "status": job["status"].value,
             "started_at": job["started_at"].isoformat(),
             "has_result": analysis_id in _analysis_results,
+            "company_name": job.get("company_name") or "Unknown",
+            "overall_score": 0,
+            "recommendation": "",
         })
 
     # Also include completed results not in jobs
     for analysis_id in _analysis_results:
         if analysis_id not in _analysis_jobs:
             result = _analysis_results[analysis_id]
+            cname = result.company_name if hasattr(result, "company_name") else "Unknown"
+            rec = ""
+            score = 0.0
+            if hasattr(result, "recommendation"):
+                rec = str(result.recommendation) if result.recommendation else ""
+            if hasattr(result, "overall_score"):
+                score = result.overall_score or 0.0
+
+            try:
+                started = result.memo_date.isoformat() if hasattr(result, "memo_date") and result.memo_date else ""
+            except Exception:
+                started = ""
+
             jobs.append({
                 "analysis_id": analysis_id,
                 "status": "completed",
-                "started_at": result.memo_date.isoformat(),
+                "started_at": started,
                 "has_result": True,
-                "company_name": result.company_name,
+                "company_name": str(cname) if cname else "Unknown",
+                "overall_score": float(score) if isinstance(score, (int, float)) else 0.0,
+                "recommendation": str(rec) if rec else "",
             })
 
+    # Apply filters
+    if company_name:
+        search = company_name.lower()
+        jobs = [j for j in jobs if search in j.get("company_name", "").lower()]
+
+    if recommendation:
+        jobs = [j for j in jobs if j.get("recommendation") == recommendation]
+
+    if min_score is not None:
+        jobs = [j for j in jobs if j.get("overall_score", 0) >= min_score]
+
+    # Sort
+    if sort_by == "company_name":
+        jobs.sort(key=lambda j: j.get("company_name", "").lower())
+    elif sort_by == "score":
+        jobs.sort(key=lambda j: j.get("overall_score", 0), reverse=True)
+    else:
+        jobs.sort(key=lambda j: j.get("started_at", ""), reverse=True)
+
+    total = len(jobs)
+    paginated = jobs[offset : offset + limit]
+
     return {
-        "total": len(jobs),
-        "analyses": jobs[:limit],
+        "total": total,
+        "analyses": paginated,
     }
 
 

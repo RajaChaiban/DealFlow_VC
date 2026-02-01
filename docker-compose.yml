@@ -1,6 +1,17 @@
-version: "3.8"
+# =============================================================================
+# DealFlow AI Copilot - Multi-Service Docker Compose
+# =============================================================================
+# Usage:
+#   docker compose up -d            # Start all services
+#   docker compose up api           # Start only the API
+#   docker compose logs -f api      # Tail API logs
+#   docker compose down -v          # Stop and remove volumes
+# =============================================================================
 
 services:
+  # ---------------------------------------------------------------------------
+  # FastAPI Backend (Python)
+  # ---------------------------------------------------------------------------
   api:
     build:
       context: .
@@ -9,44 +20,145 @@ services:
     container_name: dealflow-api
     restart: unless-stopped
     ports:
-      - "8000:8000"
+      - "${API_PORT:-8000}:8000"
     environment:
+      - APP_NAME=DealFlow AI Copilot
       - DEBUG=${DEBUG:-False}
       - GOOGLE_API_KEY=${GOOGLE_API_KEY}
       - PITCHBOOK_API_KEY=${PITCHBOOK_API_KEY:-}
       - CRUNCHBASE_API_KEY=${CRUNCHBASE_API_KEY:-}
       - SERP_API_KEY=${SERP_API_KEY:-}
+      - DATABASE_URL=postgresql+asyncpg://dealflow:${POSTGRES_PASSWORD:-dealflow}@postgres:5432/${POSTGRES_DB:-dealflow}
+      - DATABASE_ECHO=${DATABASE_ECHO:-False}
+      - REDIS_URL=redis://redis:6379/0
+      - REDIS_TTL_SECONDS=${REDIS_TTL_SECONDS:-3600}
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY:-change-me-in-production}
+      - JWT_ALGORITHM=${JWT_ALGORITHM:-HS256}
+      - JWT_ACCESS_TOKEN_EXPIRE_MINUTES=${JWT_ACCESS_TOKEN_EXPIRE_MINUTES:-60}
+      - API_KEYS=${API_KEYS:-}
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:3000,http://localhost:8501}
+      - RATE_LIMIT_PER_MINUTE=${RATE_LIMIT_PER_MINUTE:-30}
+      - RATE_LIMIT_PER_HOUR=${RATE_LIMIT_PER_HOUR:-200}
+      - DEFAULT_MODEL=${DEFAULT_MODEL:-gemini-1.5-pro-latest}
+      - DEFAULT_TEMPERATURE=${DEFAULT_TEMPERATURE:-0.3}
+      - MAX_TOKENS=${MAX_TOKENS:-2048}
     volumes:
       - ./data:/app/data
       - ./logs:/app/logs
       - ./prompts:/app/prompts
     env_file:
       - .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
       timeout: 10s
       retries: 3
+      start_period: 15s
+    networks:
+      - dealflow-network
+
+  # ---------------------------------------------------------------------------
+  # Next.js Frontend
+  # ---------------------------------------------------------------------------
+  frontend:
+    build:
+      context: ./dealflow-ui
+      dockerfile: Dockerfile
+      args:
+        # Browser URL — used for NEXT_PUBLIC_* env vars baked at build time
+        - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+    container_name: dealflow-frontend
+    restart: unless-stopped
+    ports:
+      - "${FRONTEND_PORT:-3000}:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+      # Internal URL for server-side rewrites (Docker networking)
+      - API_INTERNAL_URL=http://api:8000
+      - NODE_ENV=production
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    networks:
+      - dealflow-network
+
+  # ---------------------------------------------------------------------------
+  # PostgreSQL Database
+  # ---------------------------------------------------------------------------
+  postgres:
+    image: postgres:16-alpine
+    container_name: dealflow-postgres
+    restart: unless-stopped
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER:-dealflow}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-dealflow}
+      - POSTGRES_DB=${POSTGRES_DB:-dealflow}
+      - PGDATA=/var/lib/postgresql/data/pgdata
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-dealflow} -d ${POSTGRES_DB:-dealflow}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
       start_period: 10s
     networks:
       - dealflow-network
 
+  # ---------------------------------------------------------------------------
+  # Redis Cache
+  # ---------------------------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: dealflow-redis
+    restart: unless-stopped
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    command: >
+      redis-server
+        --maxmemory 256mb
+        --maxmemory-policy allkeys-lru
+        --appendonly yes
+        --appendfsync everysec
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    networks:
+      - dealflow-network
+
+# =============================================================================
+# Networks
+# =============================================================================
 networks:
   dealflow-network:
     driver: bridge
+    name: dealflow-network
 
-# Uncomment below for additional services (Redis, PostgreSQL, etc.)
-#
-# redis:
-#   image: redis:7-alpine
-#   container_name: dealflow-redis
-#   restart: unless-stopped
-#   ports:
-#     - "6379:6379"
-#   volumes:
-#     - redis-data:/data
-#   networks:
-#     - dealflow-network
-#
-# volumes:
-#   redis-data:
+# =============================================================================
+# Volumes
+# =============================================================================
+volumes:
+  postgres-data:
+    driver: local
+    name: dealflow-postgres-data
+  redis-data:
+    driver: local
+    name: dealflow-redis-data

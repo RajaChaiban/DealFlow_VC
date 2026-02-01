@@ -618,7 +618,7 @@ class AnalysisResponse(BaseModel):
     status: AgentStatus
     message: str
     progress: Optional[OrchestratorProgress] = Field(default=None)
-    result: Optional[ICMemo] = Field(default=None)
+    result: Optional[dict] = Field(default=None)
     error: Optional[str] = Field(default=None)
 
 
